@@ -1,0 +1,74 @@
+version: '3'
+
+services:
+  nginx:    
+    build: .docker/nginx
+    image: turnes/fullcycle-devops-laravel-nginx:desafio-docker
+    container_name: la-nginx
+    restart: always
+    tty: true
+    env_file: .env
+    environment:
+      - APP_HOST=${APP_HOST}
+      - APP_PORT=${APP_PORT}
+      - NGINX_PORT=${NGINX_PORT}
+      - NGINX_INTERNAL=${NGINX_INTERNAL}
+    ports:
+      - "${NGINX_PORT}:${NGINX_INTERNAL}"
+    entrypoint: dockerize -template nginx.tmpl:nginx.conf -wait tcp://${APP_HOST}:${APP_PORT} -timeout 40s nginx -g "daemon off;"
+    volumes:
+      - ./app/:/var/www
+    networks:
+      app-network:
+    depends_on:
+      - app
+
+  redis:
+    image: redis:alpine
+    container_name: la-redis
+    expose:
+      - 6379
+    networks:
+      - app-network
+
+  app:
+    build: .
+    image: turnes/fullcycle-devops-laravel-compose:desafio-docker
+    container_name: la-app
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+    entrypoint: dockerize -template .docker/app/.env:.env -wait tcp://la-db:3306 -timeout 40s docker-entrypoint.sh
+    volumes:
+      - ./app/:/var/www
+      - ./.docker/app:/var/www/.docker/app
+    networks:
+      - app-network
+    depends_on:
+      - db
+      - redis            
+  
+  db:
+    build: .docker/mysql
+    image: turnes/fullcycle-devops-laravel-mysql:desafio-docker
+    container_name: la-db
+    command: --innodb-use-native-aio=0
+    restart: always
+    tty: true
+    ports:
+      - "3306:33060"    
+    environment:
+      - MYSQL_DATABASE=${DB_DATABASE}
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_USER=${DB_USERNAME}
+    volumes:
+      - ./.docker/dbdata:/var/lib/mysql
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
